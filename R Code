@@ -1,0 +1,877 @@
+tayko_data = read.csv("Tayko.csv")
+library(dplyr)
+# Check for missing values in the dataset
+missing_values <- colSums(is.na(tayko_data))
+
+# Display the number of missing values per column
+missing_values
+
+# Check for missing values and handle them
+tayko_data_clean <- tayko_data %>%
+  filter(!is.na(Spending) & !is.na(Purchase))  # Remove rows with missing values
+
+
+# Select numerical variables
+numerical_vars <- tayko_data %>% select(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending)
+
+# Function to count outliers using the IQR rule
+count_outliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  sum(x < (Q1 - 1.5 * IQR) | x > (Q3 + 1.5 * IQR), na.rm = TRUE)
+}
+
+# Count outliers for each numerical variable
+outlier_counts <- sapply(numerical_vars, count_outliers)
+
+# Display the number of outliers
+outlier_counts
+
+# Plot boxplots for each numerical variable
+par(mfrow = c(2, 2))  # Set plotting layout to 2x2
+for (var in names(numerical_vars)) {
+  boxplot(numerical_vars[[var]], main = paste("Boxplot of", var), col = "lightblue")
+}
+
+# Select numerical variables
+numerical_vars <- tayko_data %>% select(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending)
+
+# Function to detect and impute outliers using the IQR rule
+impute_outliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  
+  # Impute outliers with the median of the column
+  x[x < lower_bound | x > upper_bound] <- median(x, na.rm = TRUE)
+  return(x)
+}
+
+# Plot histograms before transformation
+par(mfrow = c(2, 2))  # Set plotting layout to 2x2
+for (var in names(numerical_vars)) {
+  hist(numerical_vars[[var]], main = paste("Histogram of", var, "(Before)"), col = "lightblue", xlab = var)
+}
+
+# Load necessary library
+library(dplyr)
+
+# Select numerical variables
+numerical_vars <- tayko_data %>% select(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending)
+
+# Detect and remove outliers, replace them with NA
+remove_outliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  x[x < lower_bound | x > upper_bound] <- NA
+  return(x)
+}
+
+# Apply the function to remove outliers (replace with NA)
+numerical_vars_no_outliers <- numerical_vars %>%
+  mutate(across(everything(), remove_outliers))
+
+# Impute missing values (replacing NA) with the median
+numerical_vars_imputed <- numerical_vars_no_outliers %>%
+  mutate(across(everything(), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))
+
+# Apply log transformation (add 1 to avoid log(0))
+numerical_vars_log <- numerical_vars_imputed %>%
+  mutate(across(everything(), ~ log(. + 1)))
+
+# Plot histograms before transformation
+par(mfrow = c(2, 2))  # Set plotting layout to 2x2
+for (var in names(numerical_vars)) {
+  hist(numerical_vars[[var]], main = paste("Histogram of", var, "(Original)"), col = "lightblue", xlab = var)
+}
+
+# Plot histograms after log transformation
+par(mfrow = c(2, 2))
+for (var in names(numerical_vars_log)) {
+  hist(numerical_vars_log[[var]], main = paste("Histogram of", var, "(Log Transformed)"), col = "lightgreen", xlab = var)
+}
+
+# Boxplots after log transformation
+par(mfrow = c(2, 2))
+for (var in names(numerical_vars_log)) {
+  boxplot(numerical_vars_log[[var]], main = paste("Boxplot of", var, "(Log Transformed)"), col = "lightblue")
+}
+
+# Load necessary library
+library(dplyr)
+
+# Separate the data into purchasers and non-purchasers
+purchasers <- tayko_data %>% filter(Purchase == 1)
+non_purchasers <- tayko_data %>% filter(Purchase == 0)
+
+# Function to detect and handle outliers (replace with NA)
+remove_outliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  x[x < lower_bound | x > upper_bound] <- NA
+  return(x)
+}
+
+# Clean numerical variables for purchasers
+purchasers_cleaned <- purchasers %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending), remove_outliers)) %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending),
+                ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending),
+                ~ log(. + 1)))  # Log transformation
+
+# Clean numerical variables for non-purchasers
+non_purchasers_cleaned <- non_purchasers %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`), remove_outliers)) %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`),
+                ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`),
+                ~ log(. + 1))) %>%
+  mutate(Spending = log(Spending + 1))  # Log transform Spending to keep scale consistent
+
+# Combine the cleaned data
+cleaned_data <- bind_rows(purchasers_cleaned, non_purchasers_cleaned)
+# Ensure relevant columns in purchasers and non-purchasers are numeric
+purchasers <- purchasers %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending), as.numeric))
+
+purchasers_cleaned <- purchasers_cleaned %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending), as.numeric))
+
+# Plot histograms for original and cleaned data
+par(mfrow = c(2, 2))  # Set layout for 2x2 plots
+for (var in c("Freq", "last_update_days_ago", "X1st_update_days_ago", "Spending")) {
+  hist(purchasers[[var]], main = paste(var, "(Original, Purchasers)"), col = "lightblue", xlab = var)
+  hist(purchasers_cleaned[[var]], main = paste(var, "(Cleaned, Purchasers)"), col = "lightgreen", xlab = paste("Log", var))
+}
+
+
+# Summary of the cleaned dataset
+summary(cleaned_data)
+# Load necessary library
+library(dplyr)
+
+# Separate the data into purchasers and non-purchasers
+purchasers <- tayko_data %>% filter(Purchase == 1)
+non_purchasers <- tayko_data %>% filter(Purchase == 0)
+
+# Function to detect and handle outliers (replace with NA)
+remove_outliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  x[x < lower_bound | x > upper_bound] <- NA
+  return(x)
+}
+
+# Clean and transform for purchasers
+purchasers_cleaned <- purchasers %>%
+  mutate(across(c(Freq, Spending), remove_outliers)) %>%
+  mutate(across(c(Freq, Spending), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(c(Freq, Spending), ~ log(. + 1))) %>%  # Log transformation only for Freq and Spending
+  mutate(across(c(last_update_days_ago, `X1st_update_days_ago`), remove_outliers)) %>%
+  mutate(across(c(last_update_days_ago, `X1st_update_days_ago`), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))  # Retain original scale
+
+# Clean for non-purchasers (no Spending outliers, Spending remains 0)
+non_purchasers_cleaned <- non_purchasers %>%
+  mutate(across(c(Freq), remove_outliers)) %>%
+  mutate(across(c(Freq), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(c(Freq), ~ log(. + 1))) %>%  # Log transformation only for Freq
+  mutate(across(c(last_update_days_ago, `X1st_update_days_ago`), remove_outliers)) %>%
+  mutate(across(c(last_update_days_ago, `X1st_update_days_ago`), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))  # Retain original scale
+
+# Combine the cleaned data
+cleaned_data <- bind_rows(purchasers_cleaned, non_purchasers_cleaned)
+
+# Visualize histograms for updated cleaning
+par(mfrow = c(2, 2))
+for (var in c("Freq", "Spending")) {
+  hist(purchasers[[var]], main = paste(var, "(Original, Purchasers)"), col = "lightblue", xlab = var)
+  hist(purchasers_cleaned[[var]], main = paste(var, "(Cleaned, Purchasers)"), col = "lightgreen", xlab = paste("Log", var))
+}
+
+# Histograms for variables without log transformation
+for (var in c("last_update_days_ago", "X1st_update_days_ago")) {
+  hist(purchasers[[var]], main = paste(var, "(Original, Purchasers)"), col = "lightblue", xlab = var)
+  hist(purchasers_cleaned[[var]], main = paste(var, "(Cleaned, Purchasers)"), col = "lightgreen", xlab = var)
+}
+
+# Load necessary library
+library(dplyr)
+
+# Function to detect and handle outliers (replace with NA)
+remove_outliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  x[x < lower_bound | x > upper_bound] <- NA
+  return(x)
+}
+
+# Clean and transform for non-purchasers
+non_purchasers_cleaned <- non_purchasers %>%
+  # Remove outliers for relevant variables
+  mutate(across(c(Freq), remove_outliers)) %>%
+  mutate(across(c(Freq), ~ ifelse(is.na(.), median(., na.rm = TRUE), .))) %>%
+  mutate(across(c(Freq), ~ log(. + 1))) %>%  # Log transformation for Freq
+  mutate(across(c(last_update_days_ago, `X1st_update_days_ago`), remove_outliers)) %>%
+  mutate(across(c(last_update_days_ago, `X1st_update_days_ago`), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))  # Retain original scale
+
+# Combine with purchasers for full cleaned dataset
+cleaned_data <- bind_rows(purchasers_cleaned, non_purchasers_cleaned)
+
+# Visualize histograms for non-purchasers
+par(mfrow = c(2, 2))
+for (var in c("Freq")) {
+  hist(non_purchasers[[var]], main = paste(var, "(Original, Non-Purchasers)"), col = "lightblue", xlab = var)
+  hist(non_purchasers_cleaned[[var]], main = paste(var, "(Cleaned, Non-Purchasers)"), col = "lightgreen", xlab = paste("Log", var))
+}
+# Ensure relevant columns in non-purchasers are numeric
+non_purchasers <- non_purchasers %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending), as.numeric))
+
+non_purchasers_cleaned <- non_purchasers_cleaned %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending), as.numeric))
+
+# Ensure column names are correctly formatted and numeric
+non_purchasers <- non_purchasers %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending), as.numeric))
+
+non_purchasers_cleaned <- non_purchasers_cleaned %>%
+  mutate(across(c(Freq, last_update_days_ago, `X1st_update_days_ago`, Spending), as.numeric))
+
+# Check for column names and ensure they match
+colnames(non_purchasers)
+colnames(non_purchasers_cleaned)
+
+# Ensure relevant columns in non-purchasers are numeric
+non_purchasers <- non_purchasers %>%
+  mutate(across(c(Freq, last_update_days_ago, X1st_update_days_ago, Spending), as.numeric))
+
+non_purchasers_cleaned <- non_purchasers_cleaned %>%
+  mutate(across(c(Freq, last_update_days_ago, X1st_update_days_ago, Spending), as.numeric))
+
+# Histograms for variables without log transformation
+par(mfrow = c(2, 2))  # Set layout for 2x2 plots
+for (var in c("last_update_days_ago", "X1st_update_days_ago")) {
+  hist(non_purchasers[[var]], main = paste(var, "(Original, Non-Purchasers)"), col = "lightblue", xlab = var)
+  hist(non_purchasers_cleaned[[var]], main = paste(var, "(Cleaned, Non-Purchasers)"), col = "lightgreen", xlab = var)
+}
+
+# Save the cleaned dataset
+cleaned_dataset <- cleaned_data
+
+# View the structure of the cleaned dataset
+str(cleaned_dataset)
+
+# Optionally, save it to a CSV file for future use
+write.csv(cleaned_dataset, "cleaned_dataset.csv", row.names = FALSE)
+
+#Question 1: 
+#Step 1: Calculate Mailing Costs
+cost_per_catalog <- 2
+number_of_catalogs <- 180000
+total_mailing_cost <- cost_per_catalog * number_of_catalogs
+total_mailing_cost
+# Step 2: Estimate Expected Revenue
+response_rate <- 0.053
+expected_purchasers <- number_of_catalogs * response_rate
+expected_purchasers
+# Step 3: Create a table of only purchasers and calculate average spending
+# Filter only the rows where a purchase was made
+tayko_purchasers <- tayko_data %>% filter(Purchase == 1)
+
+# Calculate the average spending for purchasers only
+average_spending <- mean(tayko_purchasers$Spending, na.rm = TRUE)
+average_spending
+# Estimate Expected Revenue
+total_expected_revenue <- expected_purchasers * average_spending
+total_expected_revenue
+# Step 4: Calculate Gross Profit
+gross_profit <- total_expected_revenue - total_mailing_cost
+gross_profit
+
+
+
+#Q3:
+# Select the numerical variables
+numerical_vars <- cleaned_dataset %>% select(Freq, last_update_days_ago, X1st_update_days_ago, Spending)
+
+# Compute the six-summary statistics for each variable
+summary_stats <- numerical_vars %>%
+  summarise(
+    Freq_min = min(Freq, na.rm = TRUE),
+    Freq_Q1 = quantile(Freq, 0.25, na.rm = TRUE),
+    Freq_median = median(Freq, na.rm = TRUE),
+    Freq_mean = mean(Freq, na.rm = TRUE),
+    Freq_Q3 = quantile(Freq, 0.75, na.rm = TRUE),
+    Freq_max = max(Freq, na.rm = TRUE),
+    
+    last_update_min = min(last_update_days_ago, na.rm = TRUE),
+    last_update_Q1 = quantile(last_update_days_ago, 0.25, na.rm = TRUE),
+    last_update_median = median(last_update_days_ago, na.rm = TRUE),
+    last_update_mean = mean(last_update_days_ago, na.rm = TRUE),
+    last_update_Q3 = quantile(last_update_days_ago, 0.75, na.rm = TRUE),
+    last_update_max = max(last_update_days_ago, na.rm = TRUE),
+    
+    X1st_update_min = min(X1st_update_days_ago, na.rm = TRUE),
+    X1st_update_Q1 = quantile(X1st_update_days_ago, 0.25, na.rm = TRUE),
+    X1st_update_median = median(X1st_update_days_ago, na.rm = TRUE),
+    X1st_update_mean = mean(X1st_update_days_ago, na.rm = TRUE),
+    X1st_update_Q3 = quantile(X1st_update_days_ago, 0.75, na.rm = TRUE),
+    X1st_update_max = max(X1st_update_days_ago, na.rm = TRUE),
+    
+    Spending_min = min(Spending, na.rm = TRUE),
+    Spending_Q1 = quantile(Spending, 0.25, na.rm = TRUE),
+    Spending_median = median(Spending, na.rm = TRUE),
+    Spending_mean = mean(Spending, na.rm = TRUE),
+    Spending_Q3 = quantile(Spending, 0.75, na.rm = TRUE),
+    Spending_max = max(Spending, na.rm = TRUE)
+  )
+
+# Print the summary statistics
+summary_stats
+
+# Reverse log transformation and calculate the mean spending for purchasers
+mean_spending_purchasers <- cleaned_dataset %>%
+  filter(Purchase == 1) %>%
+  summarise(mean_spending = mean(exp(Spending) - 1, na.rm = TRUE)) %>%
+  pull(mean_spending)
+
+# Print the corrected mean spending
+mean_spending_purchasers
+# Define the response rate and number of catalogs
+response_rate <- 0.053
+num_catalogs <- 180000
+
+# Calculate revenue and mailing cost
+revenue <- num_catalogs * response_rate * mean_spending_purchasers
+mailing_cost <- num_catalogs * 2
+revenue
+mailing_cost
+# Calculate gross profit
+gross_profit <- revenue - mailing_cost
+
+# Print the gross profit
+gross_profit
+
+#Q3:
+#a.
+# Reverse log transformation for Freq and Spending
+cleansed_original_scale <- cleaned_dataset %>%
+  mutate(
+    Freq = exp(Freq) - 1,
+    Spending = exp(Spending) - 1
+  )
+
+# Compute 6-summary statistics for numerical variables on the original scale
+summary_stats <- cleansed_original_scale %>%
+  summarise(
+    Freq_min = min(Freq, na.rm = TRUE),
+    Freq_Q1 = quantile(Freq, 0.25, na.rm = TRUE),
+    Freq_median = median(Freq, na.rm = TRUE),
+    Freq_mean = mean(Freq, na.rm = TRUE),
+    Freq_Q3 = quantile(Freq, 0.75, na.rm = TRUE),
+    Freq_max = max(Freq, na.rm = TRUE),
+    
+    last_update_min = min(last_update_days_ago, na.rm = TRUE),
+    last_update_Q1 = quantile(last_update_days_ago, 0.25, na.rm = TRUE),
+    last_update_median = median(last_update_days_ago, na.rm = TRUE),
+    last_update_mean = mean(last_update_days_ago, na.rm = TRUE),
+    last_update_Q3 = quantile(last_update_days_ago, 0.75, na.rm = TRUE),
+    last_update_max = max(last_update_days_ago, na.rm = TRUE),
+    
+    X1st_update_min = min(X1st_update_days_ago, na.rm = TRUE),
+    X1st_update_Q1 = quantile(X1st_update_days_ago, 0.25, na.rm = TRUE),
+    X1st_update_median = median(X1st_update_days_ago, na.rm = TRUE),
+    X1st_update_mean = mean(X1st_update_days_ago, na.rm = TRUE),
+    X1st_update_Q3 = quantile(X1st_update_days_ago, 0.75, na.rm = TRUE),
+    X1st_update_max = max(X1st_update_days_ago, na.rm = TRUE),
+    
+    Spending_min = min(Spending, na.rm = TRUE),
+    Spending_Q1 = quantile(Spending, 0.25, na.rm = TRUE),
+    Spending_median = median(Spending, na.rm = TRUE),
+    Spending_mean = mean(Spending, na.rm = TRUE),
+    Spending_Q3 = quantile(Spending, 0.75, na.rm = TRUE),
+    Spending_max = max(Spending, na.rm = TRUE)
+  )
+
+# Print the summary statistics
+summary_stats
+
+# Reverse log transformation and calculate descriptive statistics for Spending (Purchasers Only)
+purchasers_stats <- cleaned_dataset %>%
+  filter(Purchase == 1) %>%
+  mutate(Spending = exp(Spending) - 1) %>%  # Reverse log transformation
+  summarise(
+    Spending_min = min(Spending, na.rm = TRUE),
+    Spending_Q1 = quantile(Spending, 0.25, na.rm = TRUE),
+    Spending_median = median(Spending, na.rm = TRUE),
+    Spending_mean = mean(Spending, na.rm = TRUE),
+    Spending_Q3 = quantile(Spending, 0.75, na.rm = TRUE),
+    Spending_max = max(Spending, na.rm = TRUE)
+  )
+
+# Print the descriptive statistics for purchasers
+purchasers_stats
+
+# Load required libraries
+library(GGally)
+library(ggplot2)
+
+# Select the numerical variables for the matrix scatter plot
+numerical_vars <- cleaned_dataset %>%
+  select(Freq, last_update_days_ago, X1st_update_days_ago, Spending)
+
+# Create the matrix scatter plot
+ggpairs(numerical_vars,
+        title = "Matrix Scatter Plot of Numerical Variables",
+        lower = list(continuous = wrap("points", alpha = 0.6)),  # Scatter plot for lower triangle
+        diag = list(continuous = wrap("densityDiag", alpha = 0.4)),  # Density plot on diagonal
+        upper = list(continuous = wrap("cor", size = 4)))  # Correlation for upper triangle
+
+# Reverse log transformation for Freq and Spending
+cleaned_original_scale <- cleaned_dataset %>%
+  mutate(
+    Freq = exp(Freq) - 1,
+    Spending = exp(Spending) - 1
+  )
+
+# Select the numerical variables for the scatter plot matrix
+numerical_vars <- cleaned_original_scale %>%
+  select(Freq, last_update_days_ago, X1st_update_days_ago, Spending)
+
+# Create the matrix scatter plot
+library(GGally)
+library(ggplot2)
+
+ggpairs(numerical_vars,
+        title = "Matrix Scatter Plot of Numerical Variables (Original Scale)",
+        lower = list(continuous = wrap("points", alpha = 0.6)),  # Scatter plot for lower triangle
+        diag = list(continuous = wrap("densityDiag", alpha = 0.4)),  # Density plot on diagonal
+        upper = list(continuous = wrap("cor", size = 4)))  # Correlation for upper triangle
+##heatmap
+# Load required libraries
+library(ggplot2)
+library(reshape2)
+
+# Select numerical variables for correlation
+numerical_vars <- cleaned_dataset %>%
+  select(Freq, last_update_days_ago, X1st_update_days_ago, Spending)
+
+# Reverse log transformation for Freq and Spending (if needed)
+numerical_vars <- numerical_vars %>%
+  mutate(
+    Freq = exp(Freq) - 1,
+    Spending = exp(Spending) - 1
+  )
+
+# Compute the correlation matrix
+cor_matrix <- cor(numerical_vars, use = "complete.obs")
+
+# Melt the correlation matrix for ggplot
+cor_data <- melt(cor_matrix)
+
+# Create the heatmap
+ggplot(cor_data, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1, 1), space = "Lab",
+                       name = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(title = "Heatmap of Correlations", x = "Variables", y = "Variables")
+
+#Q3
+# Load required library
+library(dplyr)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Determine sample sizes
+n <- nrow(cleaned_dataset)
+train_size <- floor(0.4 * n)
+validation_size <- floor(0.35 * n)
+
+# Randomly shuffle rows
+shuffled_data <- cleaned_dataset %>% sample_frac(1)
+
+# Partition the data
+train_set <- shuffled_data[1:train_size, ]
+validation_set <- shuffled_data[(train_size + 1):(train_size + validation_size), ]
+test_set <- shuffled_data[(train_size + validation_size + 1):n, ]
+
+# Verify partition sizes
+cat("Training set size: ", nrow(train_set), "\n")
+cat("Validation set size: ", nrow(validation_set), "\n")
+cat("Test set size: ", nrow(test_set), "\n")
+
+# Build logistic regression model using the training set
+logistic_model <- glm(Purchase ~ Freq + last_update_days_ago + X1st_update_days_ago + Spending,
+                      data = train_set,
+                      family = binomial)
+
+# Summarize the model
+summary(logistic_model)
+
+##Feature Selection
+# Load necessary library
+library(car)
+
+# Calculate VIF for the logistic regression model with log-scaled variables
+vif_log_scaled <- vif(logistic_model)
+print("VIF with log-scaled variables:")
+vif_log_scaled
+
+# Reverse log transformation for Freq and Spending
+train_set_original_scale <- train_set %>%
+  mutate(
+    Freq = exp(Freq) - 1,
+    Spending = exp(Spending) - 1
+  )
+
+# Fit logistic regression model without log scaling
+logistic_model_original <- glm(Purchase ~ Freq + last_update_days_ago + X1st_update_days_ago + Spending,
+                               data = train_set_original_scale,
+                               family = binomial)
+
+# Calculate VIF for the logistic regression model with original-scale variables
+vif_original <- vif(logistic_model_original)
+print("VIF with original-scale variables:")
+vif_original
+
+
+##PCA
+# Extract the correlated variables
+update_days_data <- train_set %>%
+  select(last_update_days_ago, X1st_update_days_ago)
+
+# Perform PCA
+pca_result <- prcomp(update_days_data, center = TRUE, scale. = TRUE)
+
+# View PCA summary to check variance explained
+summary(pca_result)
+
+# Add PC1 to the training set
+train_set_pca <- train_set %>%
+  mutate(PC1 = pca_result$x[, 1]) %>%  # Add PC1
+  select(-last_update_days_ago, -X1st_update_days_ago)  # Remove original variables
+
+# Fit logistic regression model with PC1
+logistic_model_pca <- glm(Purchase ~ Freq + Spending + PC1,
+                          data = train_set_pca,
+                          family = binomial)
+
+# Summarize the model
+summary(logistic_model_pca)
+
+library(car)
+
+# Calculate VIF for the new model
+vif_pca <- vif(logistic_model_pca)
+print("VIF after PCA:")
+vif_pca
+
+##C
+# Full model including all predictors
+full_model <- glm(Purchase ~ Freq + Spending + PC1,
+                  data = train_set_pca,
+                  family = binomial)
+# Stepwise logistic regression using backward elimination
+stepwise_model <- step(full_model, direction = "backward")
+
+# Summarize the final model
+summary(stepwise_model)
+
+# Predict probabilities on the training set
+train_set_pca$predicted_prob <- predict(stepwise_model, newdata = train_set_pca, type = "response")
+
+# Convert probabilities to binary predictions (threshold = 0.5)
+train_set_pca$predicted_class <- ifelse(train_set_pca$predicted_prob > 0.5, 1, 0)
+
+# Confusion matrix for training set
+confusion_matrix <- table(Predicted = train_set_pca$predicted_class, Actual = train_set_pca$Purchase)
+print(confusion_matrix)
+
+# Calculate accuracy
+accuracy <- mean(train_set_pca$predicted_class == train_set_pca$Purchase)
+cat("Training Accuracy: ", accuracy, "\n")
+
+# Predict probabilities on the validation set
+validation_set$predicted_prob <- predict(stepwise_model, newdata = validation_set, type = "response")
+
+# Convert probabilities to binary predictions
+validation_set$predicted_class <- ifelse(validation_set$predicted_prob > 0.5, 1, 0)
+
+# Confusion matrix for validation set
+validation_confusion_matrix <- table(Predicted = validation_set$predicted_class, Actual = validation_set$Purchase)
+print(validation_confusion_matrix)
+
+# Calculate accuracy for validation set
+validation_accuracy <- mean(validation_set$predicted_class == validation_set$Purchase)
+cat("Validation Accuracy: ", validation_accuracy, "\n")
+
+##D
+# Predict probabilities using the full model
+train_set_pca$predicted_prob_full <- predict(full_model, newdata = train_set_pca, type = "response")
+
+# Convert probabilities to binary predictions (threshold = 0.5)
+train_set_pca$predicted_class_full <- ifelse(train_set_pca$predicted_prob_full > 0.5, 1, 0)
+
+# Generate confusion matrix for the full model
+confusion_matrix_full <- table(Predicted = train_set_pca$predicted_class_full, Actual = train_set_pca$Purchase)
+print("Confusion Matrix - Full Model (Before Stepwise):")
+print(confusion_matrix_full)
+
+# Calculate accuracy for the full model
+accuracy_full <- mean(train_set_pca$predicted_class_full == train_set_pca$Purchase)
+cat("Accuracy - Full Model (Before Stepwise):", accuracy_full, "\n")
+
+# Predict probabilities using the stepwise-selected model
+train_set_pca$predicted_prob_stepwise <- predict(stepwise_model, newdata = train_set_pca, type = "response")
+
+# Convert probabilities to binary predictions (threshold = 0.5)
+train_set_pca$predicted_class_stepwise <- ifelse(train_set_pca$predicted_prob_stepwise > 0.5, 1, 0)
+
+# Generate confusion matrix for the stepwise model
+confusion_matrix_stepwise <- table(Predicted = train_set_pca$predicted_class_stepwise, Actual = train_set_pca$Purchase)
+print("Confusion Matrix - Stepwise Model (After Stepwise):")
+print(confusion_matrix_stepwise)
+
+# Calculate accuracy for the stepwise model
+accuracy_stepwise <- mean(train_set_pca$predicted_class_stepwise == train_set_pca$Purchase)
+cat("Accuracy - Stepwise Model (After Stepwise):", accuracy_stepwise, "\n")
+
+
+# Create a comparison table
+comparison_table <- data.frame(
+  Aspect = c(
+    "Variables Used",
+    "Number of Variables",
+    "AIC",
+    "Training Accuracy",
+    "Validation Accuracy",
+    "Confusion Matrix (Training)",
+    "Confusion Matrix (Validation)",
+    "Model Complexity",
+    "Interpretability"
+  ),
+  `Before Stepwise (Full Model)` = c(
+    "Freq, Spending, PC1",
+    3,
+    "Higher (Check Output)",
+    "100%",
+    "100%",
+    "Perfect (407 non-purchasers, 393 purchasers)",
+    "Perfect (340 non-purchasers, 360 purchasers)",
+    "Complex (3 variables)",
+    "Moderate"
+  ),
+  `After Stepwise (Reduced Model)` = c(
+    "Spending",
+    1,
+    4,
+    "100%",
+    "100%",
+    "Perfect (407 non-purchasers, 393 purchasers)",
+    "Perfect (340 non-purchasers, 360 purchasers)",
+    "Simple (1 variable)",
+    "High"
+  ),
+  stringsAsFactors = FALSE
+)
+
+# Print the table
+print(comparison_table)
+
+# Load the knitr package
+library(knitr)
+
+library("kableExtra")
+# Create a nicely formatted table
+kable(comparison_table, format = "markdown", col.names = c("Aspect", "Before Stepwise (Full Model)", "After Stepwise (Reduced Model)"))
+
+# Load the kableExtra package
+library(kableExtra)
+
+# Create an enhanced table
+kable(comparison_table, format = "html", col.names = c("Aspect", "Before Stepwise (Full Model)", "After Stepwise (Reduced Model)")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+# Save table to Markdown file
+writeLines(kable(comparison_table, format = "markdown"), "comparison_table.md")
+
+##Test set
+# Predict probabilities for the test set
+test_set$predicted_prob <- predict(stepwise_model, newdata = test_set, type = "response")
+
+# Convert probabilities to binary predictions (threshold = 0.5)
+test_set$predicted_class <- ifelse(test_set$predicted_prob > 0.5, 1, 0)
+
+# Generate a confusion matrix
+test_confusion_matrix <- table(Predicted = test_set$predicted_class, Actual = test_set$Purchase)
+
+# Print the confusion matrix
+print("Confusion Matrix - Test Set:")
+print(test_confusion_matrix)
+
+# Calculate accuracy
+test_accuracy <- mean(test_set$predicted_class == test_set$Purchase)
+cat("Test Set Accuracy:", test_accuracy, "\n")
+
+
+##q4
+library(dplyr)
+
+# Create a vector of IDs for only purchasers (Purchase = 1)
+purchasers_ids <- train_set_pca %>%
+  filter(Purchase == 1) %>%
+  pull(sequence_number)
+
+# Print the vector of purchasers' IDs
+print(purchasers_ids)
+
+# Filter the dataset for only purchasers
+purchasers_data <- train_set_pca %>%
+  filter(Purchase == 1)
+
+# Set a seed for reproducibility
+set.seed(123)
+
+# Create a random partition for training set (60%)
+train_indices <- sample(seq_len(nrow(purchasers_data)), size = 0.6 * nrow(purchasers_data))
+
+# Create the training and validation sets
+purchasers_train <- purchasers_data[train_indices, ]   # Training set (60%)
+purchasers_validation <- purchasers_data[-train_indices, ]  # Validation set (40%)
+
+# Display the sizes of the partitions
+cat("Training Set Size:", nrow(purchasers_train), "\n")
+cat("Validation Set Size:", nrow(purchasers_validation), "\n")
+
+##c.
+# Run the multiple regression model
+multiple_regression_model <- lm(Spending ~ Freq + PC1,
+                                data = purchasers_train)
+
+# Summarize the model
+summary(multiple_regression_model)
+
+##d
+# Full model with all predictors
+full_model <- lm(Spending ~ Freq + PC1, data = purchasers_train)
+
+# Summarize the full model
+summary(full_model)
+# Stepwise regression
+stepwise_model <- step(full_model, direction = "both")
+
+# Summarize the stepwise-selected model
+summary(stepwise_model)
+# Compare R-squared, Adjusted R-squared, and AIC
+comparison <- data.frame(
+  Metric = c("R-squared", "Adjusted R-squared", "AIC"),
+  Full_Model = c(summary(full_model)$r.squared,
+                 summary(full_model)$adj.r.squared,
+                 AIC(full_model)),
+  Stepwise_Model = c(summary(stepwise_model)$r.squared,
+                     summary(stepwise_model)$adj.r.squared,
+                     AIC(stepwise_model))
+)
+
+# Print the comparison table
+print(comparison)
+
+
+##e
+# Use the stepwise model to predict Spending on the validation set
+purchasers_validation$predicted_spending <- predict(stepwise_model, newdata = purchasers_validation)
+
+# Compare actual and predicted values to calculate performance metrics
+# Calculate Mean Absolute Error (MAE)
+mae <- mean(abs(purchasers_validation$Spending - purchasers_validation$predicted_spending))
+
+# Calculate Root Mean Squared Error (RMSE)
+rmse <- sqrt(mean((purchasers_validation$Spending - purchasers_validation$predicted_spending)^2))
+
+# Print performance metrics
+cat("Validation Set Performance:\n")
+cat("Mean Absolute Error (MAE):", mae, "\n")
+cat("Root Mean Squared Error (RMSE):", rmse, "\n")
+
+##Q5
+# Create the "Score Analysis" data frame
+Score_Analysis <- test_set
+
+# Add predictions for Spending using the stepwise model
+Score_Analysis$predicted_spending <- predict(stepwise_model, newdata = test_set)
+
+# Calculate the prediction error
+Score_Analysis$prediction_error <- Score_Analysis$Spending - Score_Analysis$predicted_spending
+
+# Display the first few rows of the "Score Analysis" data frame
+head(Score_Analysis)
+
+# Add predicted probabilities from the logistic regression model to Score Analysis
+Score_Analysis$predicted_probability <- predict(stepwise_model, newdata = test_set, type = "response")
+
+# Add predicted class (e.g., purchaser or non-purchaser) based on a threshold (e.g., 0.5)
+Score_Analysis$predicted_class <- ifelse(Score_Analysis$predicted_probability > 0.5, 1, 0)
+
+# Display the first few rows of the updated Score Analysis data frame
+head(Score_Analysis)
+
+
+##B
+# Add predicted spending from the stepwise regression model
+Score_Analysis$predicted_spending <- predict(stepwise_model, newdata = test_set)
+
+# Display the first few rows of the updated Score Analysis data frame
+head(Score_Analysis)
+
+##C
+# Add adjusted probability of purchase to the Score Analysis data frame
+Score_Analysis$adjusted_probability <- Score_Analysis$predicted_probability * 0.107
+
+# Display the first few rows of the updated Score Analysis data frame
+head(Score_Analysis)
+
+##D
+# Add expected spending to the Score Analysis data frame
+Score_Analysis$expected_spending <- Score_Analysis$adjusted_probability * Score_Analysis$predicted_spending
+
+# Display the first few rows of the updated Score Analysis data frame
+head(Score_Analysis)
+
+##E
+# Calculate the mean of expected spending
+mean_expected_spending <- mean(Score_Analysis$expected_spending, na.rm = TRUE)
+
+# Calculate total revenue
+total_revenue <- mean_expected_spending * 180000
+
+# Calculate total mailing costs
+mailing_cost <- 180000 * 2  # $2 per catalog mailed
+
+# Calculate gross profit
+gross_profit <- total_revenue - mailing_cost
+
+# Print the results
+cat("Mean Expected Spending:", mean_expected_spending, "\n")
+cat("Total Revenue:", total_revenue, "\n")
+cat("Mailing Cost:", mailing_cost, "\n")
+cat("Gross Profit:", gross_profit, "\n")
+
